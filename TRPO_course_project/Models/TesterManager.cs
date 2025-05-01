@@ -59,12 +59,28 @@ namespace TRPO_course_project.Models
         {
             if (_cancellationTokenSource != null)
             {
-                _cancellationTokenSource.Cancel();
-                Task.WaitAll(_testerTasks.Values.ToArray());
-                _cancellationTokenSource.Dispose();
-                _cancellationTokenSource = null;
-                
-                LogMessage("Tester simulation stopped");
+                try
+                {
+                    // Signal cancellation
+                    _cancellationTokenSource.Cancel();
+                    
+                    // Wait for tasks to complete but with a timeout to prevent deadlocks
+                    bool allTasksCompleted = Task.WaitAll(_testerTasks.Values.ToArray(), 3000);
+                    
+                    if (!allTasksCompleted)
+                    {
+                        LogMessage("Some tester tasks are taking longer to stop. Continuing shutdown.");
+                    }
+                    
+                    _cancellationTokenSource.Dispose();
+                    _cancellationTokenSource = null;
+                    
+                    LogMessage("Tester simulation stopped");
+                }
+                catch (Exception ex)
+                {
+                    LogMessage($"Error stopping simulation: {ex.Message}");
+                }
             }
         }
         

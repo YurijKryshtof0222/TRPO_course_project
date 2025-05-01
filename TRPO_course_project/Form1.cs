@@ -45,7 +45,6 @@ namespace TRPO_course_project
         
         private void CreateTesterUI(Tester tester)
         {
-            // Create a panel for the tester
             var panel = new Panel
             {
                 BorderStyle = BorderStyle.FixedSingle,
@@ -54,7 +53,6 @@ namespace TRPO_course_project
                 Margin = new Padding(5)
             };
             
-            // Add tester name label
             var nameLabel = new Label
             {
                 Text = tester.Name,
@@ -64,7 +62,6 @@ namespace TRPO_course_project
             };
             panel.Controls.Add(nameLabel);
             
-            // Add state label
             var stateLabel = new Label
             {
                 Text = $"State: {tester.State}",
@@ -73,14 +70,11 @@ namespace TRPO_course_project
             };
             panel.Controls.Add(stateLabel);
             
-            // Store references
             _testerPanels[tester.Id] = panel;
             _testerStateLabels[tester.Id] = stateLabel;
             
-            // Add to flow layout
             testerFlowLayoutPanel.Controls.Add(panel);
             
-            // Subscribe to state changes
             tester.StateChanged += (sender, e) => {
                 if (InvokeRequired)
                 {
@@ -150,7 +144,6 @@ namespace TRPO_course_project
             statisticsChart.Series.Add(correctSeries);
             statisticsChart.Series.Add(incorrectSeries);
             
-            // Configure chart
             statisticsChart.ChartAreas[0].AxisX.Title = "Time";
             statisticsChart.ChartAreas[0].AxisY.Title = "Count";
             statisticsChart.ChartAreas[0].AxisX.LabelStyle.Format = "HH:mm:ss";
@@ -175,13 +168,11 @@ namespace TRPO_course_project
             string formattedMessage = $"[{timestamp:HH:mm:ss}] {message}";
             _logMessages.Add(formattedMessage);
             
-            // Limit log size
             if (_logMessages.Count > 100)
             {
                 _logMessages.RemoveAt(0);
             }
             
-            // Update log display
             logTextBox.Text = string.Join(Environment.NewLine, _logMessages);
             logTextBox.SelectionStart = logTextBox.Text.Length;
             logTextBox.ScrollToCaret();
@@ -201,26 +192,45 @@ namespace TRPO_course_project
         
         private void UpdateStatistics(StatisticsEventArgs e)
         {
-            // Update statistics labels
-            lblProgramsWritten.Text = $"Programs Written: {e.TotalProgramsWritten}";
-            lblProgramsReviewed.Text = $"Programs Reviewed: {e.TotalProgramsReviewed}";
-            lblCorrectPrograms.Text = $"Correct Programs: {e.TotalCorrectPrograms}";
-            lblIncorrectPrograms.Text = $"Incorrect Programs: {e.TotalIncorrectPrograms}";
-            
-            // Update chart
-            DateTime now = DateTime.Now;
-            statisticsChart.Series[0].Points.AddXY(now, e.TotalProgramsWritten);
-            statisticsChart.Series[1].Points.AddXY(now, e.TotalProgramsReviewed);
-            statisticsChart.Series[2].Points.AddXY(now, e.TotalCorrectPrograms);
-            statisticsChart.Series[3].Points.AddXY(now, e.TotalIncorrectPrograms);
-            
-            // Limit data points
-            foreach (var series in statisticsChart.Series)
+            try
             {
-                if (series.Points.Count > 50)
+                // Update statistics labels
+                lblProgramsWritten.Text = $"Programs Written: {e.TotalProgramsWritten}";
+                lblProgramsReviewed.Text = $"Programs Reviewed: {e.TotalProgramsReviewed}";
+                lblCorrectPrograms.Text = $"Correct Programs: {e.TotalCorrectPrograms}";
+                lblIncorrectPrograms.Text = $"Incorrect Programs: {e.TotalIncorrectPrograms}";
+                
+                // Update chart with synchronization
+                DateTime now = DateTime.Now;
+                
+                // Lock the chart while updating to prevent cross-thread issues
+                lock (statisticsChart)
                 {
-                    series.Points.RemoveAt(0);
+                    if (statisticsChart.Series.Count >= 4)
+                    {
+                        statisticsChart.Series[0].Points.AddXY(now, e.TotalProgramsWritten);
+                        statisticsChart.Series[1].Points.AddXY(now, e.TotalProgramsReviewed);
+                        statisticsChart.Series[2].Points.AddXY(now, e.TotalCorrectPrograms);
+                        statisticsChart.Series[3].Points.AddXY(now, e.TotalIncorrectPrograms);
+                        
+                        // Limit data points
+                        foreach (var series in statisticsChart.Series)
+                        {
+                            if (series.Points.Count > 30)
+                            {
+                                series.Points.RemoveAt(0);
+                            }
+                        }
+                        
+                        // Request refresh
+                        statisticsChart.Invalidate();
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                // Log error but don't crash the application
+                Console.WriteLine($"Error updating statistics: {ex.Message}");
             }
         }
         
@@ -240,7 +250,20 @@ namespace TRPO_course_project
         {
             stopButton.Enabled = false;
             startButton.Enabled = true;
-            _testerManager.Stop();
+            
+            // Run the stop operation in a background task to prevent UI freezing
+            Task.Run(() => 
+            {
+                _testerManager.Stop();
+                // After stopping, update UI on the main thread
+                if (!IsDisposed)
+                {
+                    Invoke(new Action(() => 
+                    {
+                        AddLogMessage("Simulation fully stopped", DateTime.Now);
+                    }));
+                }
+            });
         }
     }
 }
