@@ -118,25 +118,37 @@ namespace TRPO_course_project
             var writtenSeries = new Series("Programs Written")
             {
                 ChartType = SeriesChartType.Line,
-                Color = Color.Blue
+                Color = Color.Blue,
+                XValueType = ChartValueType.DateTime,
+                MarkerStyle = MarkerStyle.Circle,
+                MarkerSize = 7
             };
             
             var reviewedSeries = new Series("Programs Reviewed")
             {
                 ChartType = SeriesChartType.Line,
-                Color = Color.Green
+                Color = Color.Yellow,
+                XValueType = ChartValueType.DateTime,
+                MarkerStyle = MarkerStyle.Circle,
+                MarkerSize = 7
             };
             
             var correctSeries = new Series("Correct Programs")
             {
                 ChartType = SeriesChartType.Line,
-                Color = Color.DarkGreen
+                Color = Color.Green,
+                XValueType = ChartValueType.DateTime,
+                MarkerStyle = MarkerStyle.Circle,
+                MarkerSize = 7
             };
             
             var incorrectSeries = new Series("Incorrect Programs")
             {
                 ChartType = SeriesChartType.Line,
-                Color = Color.Red
+                Color = Color.Red,
+                XValueType = ChartValueType.DateTime,
+                MarkerStyle = MarkerStyle.Circle,
+                MarkerSize = 7
             };
             
             statisticsChart.Series.Add(writtenSeries);
@@ -144,11 +156,26 @@ namespace TRPO_course_project
             statisticsChart.Series.Add(correctSeries);
             statisticsChart.Series.Add(incorrectSeries);
             
-            statisticsChart.ChartAreas[0].AxisX.Title = "Time";
-            statisticsChart.ChartAreas[0].AxisY.Title = "Count";
-            statisticsChart.ChartAreas[0].AxisX.LabelStyle.Format = "HH:mm:ss";
-            statisticsChart.ChartAreas[0].AxisX.IntervalType = DateTimeIntervalType.Seconds;
-            statisticsChart.ChartAreas[0].AxisX.Interval = 5;
+            // Configure chart axes
+            var chartArea = statisticsChart.ChartAreas[0];
+            chartArea.AxisX.Title = "Time";
+            chartArea.AxisY.Title = "Count";
+            chartArea.AxisX.LabelStyle.Format = "HH:mm:ss";
+            chartArea.AxisX.IntervalType = DateTimeIntervalType.Seconds;
+            chartArea.AxisX.Interval = 10;
+            
+            // Enable scrolling and zooming
+            chartArea.CursorX.AutoScroll = true;
+            chartArea.CursorX.IsUserSelectionEnabled = true;
+            chartArea.AxisX.ScaleView.Zoomable = true;
+            
+            // Set proper date/time mode for X-axis
+            chartArea.AxisX.LabelAutoFitStyle = LabelAutoFitStyles.WordWrap;
+            
+            // Initialize with a 60-second window
+            DateTime now = DateTime.Now;
+            chartArea.AxisX.Minimum = now.AddSeconds(-60).ToOADate();
+            chartArea.AxisX.Maximum = now.AddSeconds(5).ToOADate();
         }
         
         private void TesterManager_LogEvent(object sender, LogEventArgs e)
@@ -172,7 +199,7 @@ namespace TRPO_course_project
             {
                 _logMessages.RemoveAt(0);
             }
-            
+
             logTextBox.Text = string.Join(Environment.NewLine, _logMessages);
             logTextBox.SelectionStart = logTextBox.Text.Length;
             logTextBox.ScrollToCaret();
@@ -213,7 +240,10 @@ namespace TRPO_course_project
                         statisticsChart.Series[2].Points.AddXY(now, e.TotalCorrectPrograms);
                         statisticsChart.Series[3].Points.AddXY(now, e.TotalIncorrectPrograms);
                         
-                        // Limit data points
+                        // Calculate the time window to display - last 60 seconds
+                        DateTime minTime = now.AddSeconds(-60);
+                        
+                        // Remove data points older than the time window
                         foreach (var series in statisticsChart.Series)
                         {
                             if (series.Points.Count > 30)
@@ -222,6 +252,20 @@ namespace TRPO_course_project
                             }
                         }
                         
+                        // Dynamically update the X-axis (time axis) to show only the current window
+                        statisticsChart.ChartAreas[0].AxisX.Minimum = minTime.ToOADate();
+                        statisticsChart.ChartAreas[0].AxisX.Maximum = now.AddSeconds(5).ToOADate();
+
+                        // Enable proper auto-scaling for the Y-axis
+                        statisticsChart.ChartAreas[0].AxisY.Minimum = double.NaN;
+                        statisticsChart.ChartAreas[0].AxisY.Maximum = double.NaN;
+                        statisticsChart.ChartAreas[0].RecalculateAxesScale();
+                        
+                        // Force the chart to use a dynamic range based on data
+                        statisticsChart.ChartAreas[0].AxisY.IsStartedFromZero = false;
+                        statisticsChart.ChartAreas[0].AxisY.IsMarginVisible = true;
+                        statisticsChart.ChartAreas[0].AxisY.Interval = 0;
+
                         // Request refresh
                         statisticsChart.Invalidate();
                     }
