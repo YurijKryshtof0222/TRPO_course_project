@@ -1,9 +1,14 @@
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Windows.Forms;
 using System.Windows.Forms.DataVisualization.Charting;
+using System.Threading.Tasks;
 using TRPO_course_project.Models;
 
 namespace TRPO_course_project
 {
-    public partial class Form1 : Form
+    public partial class MainForm : Form
     {
         private TesterManager _testerManager;
         private List<string> _logMessages = new List<string>();
@@ -11,7 +16,7 @@ namespace TRPO_course_project
         private Dictionary<int, Label> _testerStateLabels = new Dictionary<int, Label>();
         private System.Windows.Forms.Timer _uiUpdateTimer;
         
-        public Form1()
+        public MainForm()
         {
             InitializeComponent();
             InitializeUI();
@@ -26,8 +31,27 @@ namespace TRPO_course_project
             _uiUpdateTimer.Tick += UiUpdateTimer_Tick;
             _uiUpdateTimer.Start();
             
-            // Set up the chart
+            // Set up the main chart
             InitializeChart();
+            
+            // Configure tester charts tab
+            tabPage3.Text = "Tester Statistics";
+            
+            // Ensure testerChartsPanel is set up properly
+            if (!tabPage3.Controls.Contains(testerChartsPanel))
+            {
+                // Clear existing controls
+                tabPage3.Controls.Clear();
+                
+                // Configure testerChartsPanel
+                testerChartsPanel.Dock = DockStyle.Fill;
+                testerChartsPanel.AutoScroll = true;
+                testerChartsPanel.Padding = new Padding(10);
+                testerChartsPanel.BorderStyle = BorderStyle.None;
+                
+                // Add to tabPage3
+                tabPage3.Controls.Add(testerChartsPanel);
+            }
         }
         
         private void InitializeTesterManager()
@@ -41,6 +65,9 @@ namespace TRPO_course_project
             {
                 CreateTesterUI(tester);
             }
+            
+            // Initialize individual tester charts
+            InitializeTesterCharts();
         }
         
         private void CreateTesterUI(Tester tester)
@@ -308,6 +335,291 @@ namespace TRPO_course_project
                     }));
                 }
             });
+        }
+        
+        // Tester Charts Implementation
+        private Dictionary<int, Chart> _testerCharts = new Dictionary<int, Chart>();
+        private Dictionary<int, DateTime> _lastTesterUpdateTimes = new Dictionary<int, DateTime>();
+
+        private void InitializeTesterCharts()
+        {
+            // Clear any existing charts
+            testerChartsPanel.Controls.Clear();
+            _testerCharts.Clear();
+            
+            // Create a chart for each tester
+            foreach (var tester in _testerManager.Testers)
+            {
+                CreateTesterChart(tester.Id, tester.Name);
+            }
+            
+            // Subscribe to individual tester statistics updates
+            _testerManager.TesterStatisticsUpdated += TesterManager_TesterStatisticsUpdated;
+        }
+        
+        private void CreateTesterChart(int testerId, string testerName)
+        {
+            // Create a chart container panel
+            var containerPanel = new Panel
+            {
+                BorderStyle = BorderStyle.FixedSingle,
+                Width = testerChartsPanel.Width - 15,
+                Height = 350, // Increased height to accommodate stats panel
+                Margin = new Padding(5),
+                Padding = new Padding(5),
+                Dock = DockStyle.Top
+            };
+            
+            // Add title label
+            var titleLabel = new Label
+            {
+                Text = testerName,
+                Font = new Font(Font.FontFamily, 12, FontStyle.Bold),
+                Dock = DockStyle.Top,
+                Height = 30
+            };
+            
+            // Create statistics panel
+            var statsPanel = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 100,
+                Padding = new Padding(10)
+            };
+            
+            // Add statistics labels
+            var lblProgramsWritten = new Label
+            {
+                AutoSize = true,
+                Font = new Font("Segoe UI", 10),
+                Location = new Point(10, 10),
+                Text = "Programs Written: 0",
+                Tag = "written"
+            };
+            
+            var lblProgramsReviewed = new Label
+            {
+                AutoSize = true,
+                Font = new Font("Segoe UI", 10),
+                Location = new Point(10, 35),
+                Text = "Programs Reviewed: 0",
+                Tag = "reviewed"
+            };
+            
+            var lblCorrectPrograms = new Label
+            {
+                AutoSize = true,
+                Font = new Font("Segoe UI", 10),
+                Location = new Point(10, 60),
+                Text = "Correct Programs: 0",
+                Tag = "correct"
+            };
+            
+            var lblIncorrectPrograms = new Label
+            {
+                AutoSize = true,
+                Font = new Font("Segoe UI", 10),
+                Location = new Point(10, 85),
+                Text = "Incorrect Programs: 0",
+                Tag = "incorrect"
+            };
+            
+            statsPanel.Controls.Add(lblProgramsWritten);
+            statsPanel.Controls.Add(lblProgramsReviewed);
+            statsPanel.Controls.Add(lblCorrectPrograms);
+            statsPanel.Controls.Add(lblIncorrectPrograms);
+            
+            // Store references to labels in the tag of the panel
+            statsPanel.Tag = new Dictionary<string, Label>
+            {
+                { "written", lblProgramsWritten },
+                { "reviewed", lblProgramsReviewed },
+                { "correct", lblCorrectPrograms },
+                { "incorrect", lblIncorrectPrograms }
+            };
+            
+            containerPanel.Controls.Add(statsPanel);
+            containerPanel.Controls.Add(titleLabel);
+
+            // Create chart
+            var chart = new Chart
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.Transparent
+            };
+            
+            // Add chart areas
+            var chartArea = new ChartArea("Main");
+            chartArea.AxisX.Title = "Time";
+            chartArea.AxisY.Title = "Count";
+            chartArea.AxisX.LabelStyle.Format = "HH:mm:ss";
+            chartArea.AxisX.IntervalType = DateTimeIntervalType.Seconds;
+            chartArea.AxisX.Interval = 10;
+            chart.ChartAreas.Add(chartArea);
+            
+            // Add legend
+            chart.Legends.Add(new Legend("Legend") 
+            { 
+                Docking = Docking.Top,
+                Alignment = StringAlignment.Center,
+                LegendStyle = LegendStyle.Row
+            });
+            
+            // Add series
+            var writtenSeries = new Series("Written")
+            {
+                ChartType = SeriesChartType.Line,
+                Color = Color.Blue,
+                XValueType = ChartValueType.DateTime,
+                MarkerStyle = MarkerStyle.Circle,
+                MarkerSize = 6,
+                BorderWidth = 2
+            };
+            
+            var reviewedSeries = new Series("Reviewed")
+            {
+                ChartType = SeriesChartType.Line,
+                Color = Color.Yellow,
+                XValueType = ChartValueType.DateTime,
+                MarkerStyle = MarkerStyle.Circle,
+                MarkerSize = 6,
+                BorderWidth = 2
+            };
+            
+            var correctSeries = new Series("Correct")
+            {
+                ChartType = SeriesChartType.Line,
+                Color = Color.Green,
+                XValueType = ChartValueType.DateTime,
+                MarkerStyle = MarkerStyle.Circle,
+                MarkerSize = 6,
+                BorderWidth = 2
+            };
+            
+            var incorrectSeries = new Series("Incorrect")
+            {
+                ChartType = SeriesChartType.Line,
+                Color = Color.Red,
+                XValueType = ChartValueType.DateTime,
+                MarkerStyle = MarkerStyle.Circle,
+                MarkerSize = 6,
+                BorderWidth = 2
+            };
+            
+            chart.Series.Add(writtenSeries);
+            chart.Series.Add(reviewedSeries);
+            chart.Series.Add(correctSeries);
+            chart.Series.Add(incorrectSeries);
+            
+            // Initialize with a 60-second window
+            DateTime now = DateTime.Now;
+            chartArea.AxisX.Minimum = now.AddSeconds(-60).ToOADate();
+            chartArea.AxisX.Maximum = now.AddSeconds(5).ToOADate();
+            
+            // Enable proper auto-scaling for the Y-axis
+            chartArea.AxisY.Minimum = double.NaN;
+            chartArea.AxisY.Maximum = double.NaN;
+            chartArea.AxisY.IsStartedFromZero = true;
+            chartArea.AxisY.IsMarginVisible = true;
+            
+            containerPanel.Controls.Add(chart);
+            testerChartsPanel.Controls.Add(containerPanel);
+            
+            // Store reference to the chart
+            _testerCharts[testerId] = chart;
+            _lastTesterUpdateTimes[testerId] = now;
+        }
+        
+        private void TesterManager_TesterStatisticsUpdated(object sender, TesterStatisticsEventArgs e)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action(() => UpdateTesterChart(e.Statistics)));
+            }
+            else
+            {
+                UpdateTesterChart(e.Statistics);
+            }
+        }
+        
+        private void UpdateTesterChart(TesterStatistics stats)
+        {
+            try
+            {
+                if (!_testerCharts.TryGetValue(stats.TesterId, out var chart))
+                    return;
+                
+                DateTime now = DateTime.Now;
+                _lastTesterUpdateTimes[stats.TesterId] = now;
+                
+                // Find the container panel that holds the chart
+                Control containerPanel = chart.Parent;
+                if (containerPanel == null)
+                    return;
+                
+                // Find the stats panel (should be the first panel in the container)
+                Panel statsPanel = null;
+                foreach (Control control in containerPanel.Controls)
+                {
+                    if (control is Panel panel && panel.Tag is Dictionary<string, Label>)
+                    {
+                        statsPanel = panel;
+                        break;
+                    }
+                }
+                
+                // Update the stats labels if found
+                if (statsPanel != null && statsPanel.Tag is Dictionary<string, Label> labelsDict)
+                {
+                    if (labelsDict.TryGetValue("written", out var lblWritten))
+                        lblWritten.Text = $"Programs Written: {stats.ProgramsWritten}";
+                        
+                    if (labelsDict.TryGetValue("reviewed", out var lblReviewed))
+                        lblReviewed.Text = $"Programs Reviewed: {stats.ProgramsReviewed}";
+                        
+                    if (labelsDict.TryGetValue("correct", out var lblCorrect))
+                        lblCorrect.Text = $"Correct Programs: {stats.CorrectReviews}";
+                        
+                    if (labelsDict.TryGetValue("incorrect", out var lblIncorrect))
+                        lblIncorrect.Text = $"Incorrect Programs: {stats.IncorrectReviews}";
+                }
+                
+                // Update the chart with new data
+                lock (chart)
+                {
+                    // Add data points
+                    chart.Series[0].Points.AddXY(now, stats.ProgramsWritten);
+                    chart.Series[1].Points.AddXY(now, stats.ProgramsReviewed);
+                    chart.Series[2].Points.AddXY(now, stats.CorrectReviews);
+                    chart.Series[3].Points.AddXY(now, stats.IncorrectReviews);
+                    
+                    // Set up the time window
+                    DateTime minTime = now.AddSeconds(-60);
+                    
+                    // Remove old data points
+                    foreach (var series in chart.Series)
+                    {
+                        if (series.Points.Count > 30)
+                        {
+                            series.Points.RemoveAt(0);
+                        }
+                    }
+                    
+                    // Update X-axis range
+                    chart.ChartAreas[0].AxisX.Minimum = minTime.ToOADate();
+                    chart.ChartAreas[0].AxisX.Maximum = now.AddSeconds(5).ToOADate();
+                    
+                    // Auto-scale Y-axis
+                    chart.ChartAreas[0].RecalculateAxesScale();
+                    
+                    // Refresh the chart
+                    chart.Invalidate();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating tester chart: {ex.Message}");
+            }
         }
     }
 }

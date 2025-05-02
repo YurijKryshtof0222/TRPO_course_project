@@ -9,11 +9,13 @@ namespace TRPO_course_project.Models
     {
         private readonly List<Tester> _testers = new List<Tester>();
         private readonly Dictionary<int, Task> _testerTasks = new Dictionary<int, Task>();
+        private readonly Dictionary<int, TesterStatistics> _testerStatistics = new Dictionary<int, TesterStatistics>();
         private readonly object _lockObject = new object();
         private CancellationTokenSource _cancellationTokenSource;
         
         public event EventHandler<LogEventArgs> LogEvent;
         public event EventHandler<StatisticsEventArgs> StatisticsUpdated;
+        public event EventHandler<TesterStatisticsEventArgs> TesterStatisticsUpdated;
         
         private int _totalProgramsWritten = 0;
         private int _totalProgramsReviewed = 0;
@@ -35,6 +37,10 @@ namespace TRPO_course_project.Models
             
             foreach (var tester in _testers)
             {
+                // Create statistics tracking for each tester
+                _testerStatistics[tester.Id] = new TesterStatistics(tester.Id, tester.Name);
+                
+                // Subscribe to tester events
                 tester.StateChanged += Tester_StateChanged;
                 tester.ProgramCompleted += Tester_ProgramCompleted;
                 tester.ReviewCompleted += Tester_ReviewCompleted;
@@ -129,6 +135,14 @@ namespace TRPO_course_project.Models
             {
                 _totalProgramsWritten++;
                 
+                // Update individual tester statistics
+                if (_testerStatistics.TryGetValue(tester.Id, out var stats))
+                {
+                    stats.IncrementProgramsWritten();
+                    // Notify listeners about the updated statistics
+                    TesterStatisticsUpdated?.Invoke(this, new TesterStatisticsEventArgs(stats));
+                }
+                
                 // Assign the program to another tester for review
                 var reviewer = GetAvailableReviewer(tester.Id);
                 if (reviewer != null)
@@ -155,8 +169,17 @@ namespace TRPO_course_project.Models
             lock (_lockObject)
             {
                 _totalProgramsReviewed++;
+                bool isCorrect = program.IsCorrect == true;
                 
-                if (program.IsCorrect == true)
+                // Update reviewer statistics
+                if (_testerStatistics.TryGetValue(reviewer.Id, out var reviewerStats))
+                {
+                    reviewerStats.IncrementProgramsReviewed(isCorrect);
+                    // Notify listeners about the updated statistics
+                    TesterStatisticsUpdated?.Invoke(this, new TesterStatisticsEventArgs(reviewerStats));
+                }
+                
+                if (isCorrect)
                 {
                     _totalCorrectPrograms++;
                     LogMessage($"{reviewer.Name} approved the program from Tester {program.AuthorId}");

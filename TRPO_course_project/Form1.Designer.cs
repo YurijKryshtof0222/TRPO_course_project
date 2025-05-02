@@ -2,7 +2,7 @@ using System.Windows.Forms.DataVisualization.Charting;
 
 namespace TRPO_course_project
 {
-    partial class Form1
+    partial class MainForm
     {
         /// <summary>
         ///  Required designer variable.
@@ -33,6 +33,8 @@ namespace TRPO_course_project
             this.components = new System.ComponentModel.Container();
             System.Windows.Forms.DataVisualization.Charting.ChartArea chartArea1 = new System.Windows.Forms.DataVisualization.Charting.ChartArea();
             System.Windows.Forms.DataVisualization.Charting.Legend legend1 = new System.Windows.Forms.DataVisualization.Charting.Legend();
+            this.tabPage3 = new System.Windows.Forms.TabPage();
+            this.testerChartsPanel = new System.Windows.Forms.Panel();
             this.splitContainer1 = new System.Windows.Forms.SplitContainer();
             this.panel1 = new System.Windows.Forms.Panel();
             this.testerFlowLayoutPanel = new System.Windows.Forms.FlowLayoutPanel();
@@ -117,6 +119,7 @@ namespace TRPO_course_project
             // 
             this.tabControl1.Controls.Add(this.tabPage1);
             this.tabControl1.Controls.Add(this.tabPage2);
+            this.tabControl1.Controls.Add(this.tabPage3);
             this.tabControl1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.tabControl1.Location = new System.Drawing.Point(0, 0);
             this.tabControl1.Name = "tabControl1";
@@ -298,9 +301,11 @@ namespace TRPO_course_project
         private FlowLayoutPanel testerFlowLayoutPanel;
         private Label label1;
         private TabControl tabControl1;
-        private TabPage tabPage1;
-        private TextBox logTextBox;
-        private TabPage tabPage2;
+        private System.Windows.Forms.TabPage tabPage1;
+        private System.Windows.Forms.TextBox logTextBox;
+        private System.Windows.Forms.TabPage tabPage2;
+        private System.Windows.Forms.TabPage tabPage3;
+        private System.Windows.Forms.Panel testerChartsPanel;
         private Chart statisticsChart;
         private Panel panel2;
         private Label lblIncorrectPrograms;
