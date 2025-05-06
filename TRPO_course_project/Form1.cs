@@ -8,6 +8,16 @@ using TRPO_course_project.Models;
 
 namespace TRPO_course_project
 {
+    // Class to store historical statistics data points
+    public class StatisticsDataPoint
+    {
+        public DateTime Timestamp { get; set; }
+        public int ProgramsWritten { get; set; }
+        public int ProgramsReviewed { get; set; }
+        public int CorrectPrograms { get; set; }
+        public int IncorrectPrograms { get; set; }
+    }
+    
     public partial class MainForm : Form
     {
         private TesterManager _testerManager;
@@ -15,6 +25,10 @@ namespace TRPO_course_project
         private Dictionary<int, Panel> _testerPanels = new Dictionary<int, Panel>();
         private Dictionary<int, Label> _testerStateLabels = new Dictionary<int, Label>();
         private System.Windows.Forms.Timer _uiUpdateTimer;
+        
+        // Historical data storage
+        private List<StatisticsDataPoint> _historicalData = new List<StatisticsDataPoint>();
+        private int _chartTimeWindowSeconds = 60; // Default 60 second window
         
         public MainForm()
         {
@@ -76,7 +90,7 @@ namespace TRPO_course_project
             {
                 BorderStyle = BorderStyle.FixedSingle,
                 Width = testerFlowLayoutPanel.Width - 10,
-                Height = 180, // Increased height for time interval controls
+                Height = 200, // Increased height for time interval controls
                 Margin = new Padding(5)
             };
             
@@ -146,7 +160,7 @@ namespace TRPO_course_project
             {
                 Location = new Point(130, 118),
                 Minimum = 100,
-                Maximum = 10000,
+                Maximum = 100000,
                 Increment = 100,
                 Value = tester.MaxWritingTime,
                 Width = 80,
@@ -169,7 +183,7 @@ namespace TRPO_course_project
             {
                 Location = new Point(130, 143),
                 Minimum = 100,
-                Maximum = 10000,
+                Maximum = 100000,
                 Increment = 100,
                 Value = tester.MinReviewingTime,
                 Width = 80,
@@ -434,6 +448,17 @@ namespace TRPO_course_project
                 // Update chart with synchronization
                 DateTime now = DateTime.Now;
                 
+                // Store the data point in our history
+                var dataPoint = new StatisticsDataPoint
+                {
+                    Timestamp = now,
+                    ProgramsWritten = e.TotalProgramsWritten,
+                    ProgramsReviewed = e.TotalProgramsReviewed,
+                    CorrectPrograms = e.TotalCorrectPrograms,
+                    IncorrectPrograms = e.TotalIncorrectPrograms
+                };
+                _historicalData.Add(dataPoint);
+                
                 // Lock the chart while updating to prevent cross-thread issues
                 lock (statisticsChart)
                 {
@@ -444,13 +469,15 @@ namespace TRPO_course_project
                         statisticsChart.Series[2].Points.AddXY(now, e.TotalCorrectPrograms);
                         statisticsChart.Series[3].Points.AddXY(now, e.TotalIncorrectPrograms);
                         
-                        // Calculate the time window to display - last 60 seconds
-                        DateTime minTime = now.AddSeconds(-60);
+                        // Calculate the time window to display based on user setting
+                        DateTime minTime = now.AddSeconds(-_chartTimeWindowSeconds);
                         
-                        // Remove data points older than the time window
+                        // Remove visible data points older than the time window from display (not from history)
                         foreach (var series in statisticsChart.Series)
                         {
-                            if (series.Points.Count > 30)
+                            // Remove points outside of the display window
+                            while (series.Points.Count > 0 && 
+                                   series.Points[0].XValue < minTime.ToOADate())
                             {
                                 series.Points.RemoveAt(0);
                             }
@@ -479,6 +506,112 @@ namespace TRPO_course_project
             {
                 // Log error but don't crash the application
                 Console.WriteLine($"Error updating statistics: {ex.Message}");
+            }
+        }
+        
+        private void RefreshChartDisplay()
+        {
+            try
+            {
+                lock (statisticsChart)
+                {
+                    // Clear current chart data
+                    foreach (var series in statisticsChart.Series)
+                    {
+                        series.Points.Clear();
+                    }
+                    
+                    // If we have no historical data, just return
+                    if (_historicalData.Count == 0) return;
+                    
+                    // Get current time and calculate window
+                    DateTime now = DateTime.Now;
+                    DateTime minTime = now.AddSeconds(-_chartTimeWindowSeconds);
+                    
+                    // Add all points within the window
+                    foreach (var dataPoint in _historicalData.Where(d => d.Timestamp >= minTime))
+                    {
+                        statisticsChart.Series[0].Points.AddXY(dataPoint.Timestamp, dataPoint.ProgramsWritten);
+                        statisticsChart.Series[1].Points.AddXY(dataPoint.Timestamp, dataPoint.ProgramsReviewed);
+                        statisticsChart.Series[2].Points.AddXY(dataPoint.Timestamp, dataPoint.CorrectPrograms);
+                        statisticsChart.Series[3].Points.AddXY(dataPoint.Timestamp, dataPoint.IncorrectPrograms);
+                    }
+                    
+                    // Update axes
+                    statisticsChart.ChartAreas[0].AxisX.Minimum = minTime.ToOADate();
+                    statisticsChart.ChartAreas[0].AxisX.Maximum = now.AddSeconds(5).ToOADate();
+                    statisticsChart.ChartAreas[0].RecalculateAxesScale();
+                    
+                    // Refresh
+                    statisticsChart.Invalidate();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error refreshing chart: {ex.Message}");
+            }
+        }
+        
+        private void ExportStatistics_Click(object sender, EventArgs e)
+        {
+            if (_historicalData.Count == 0)
+            {
+                MessageBox.Show("Немає даних для експорту", "Експорт статистики", 
+                               MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            
+            using (var saveDialog = new SaveFileDialog()
+            {
+                Filter = "CSV файли (*.csv)|*.csv|Всі файли (*.*)|*.*",
+                Title = "Експорт даних статистики",
+                FileName = $"StatisticsExport_{DateTime.Now:yyyy-MM-dd_HH-mm}.csv"
+            })
+            {
+                if (saveDialog.ShowDialog() == DialogResult.OK)
+                {
+                    try
+                    {
+                        // Create CSV file
+                        using (var writer = new System.IO.StreamWriter(saveDialog.FileName))
+                        {
+                            // Write header
+                            writer.WriteLine("Timestamp,Programs Written,Programs Reviewed,Correct Programs,Incorrect Programs");
+                            
+
+                            // Write data
+                            foreach (var dataPoint in _historicalData.OrderBy(d => d.Timestamp))
+                            {
+                                writer.WriteLine($"{dataPoint.Timestamp:yyyy-MM-dd HH:mm:ss},{dataPoint.ProgramsWritten},{dataPoint.ProgramsReviewed},{dataPoint.CorrectPrograms},{dataPoint.IncorrectPrograms}");
+                            }
+                        }
+                        
+                        MessageBox.Show($"Дані успішно експортовано в {saveDialog.FileName}", 
+                                      "Експорт успішний", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Помилка при експорті: {ex.Message}", 
+                                      "Помилка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+            }
+        }
+        
+        private void ClearStatisticsHistory()
+        {
+            if (MessageBox.Show("Ви впевнені, що хочете очистити всю історію статистики?", 
+                              "Підтвердження", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+            {
+                _historicalData.Clear();
+                
+                // Clear chart
+                foreach (var series in statisticsChart.Series)
+                {
+                    series.Points.Clear();
+                }
+                
+                AddLogMessage("Історію статистики очищено", DateTime.Now);
             }
         }
         
