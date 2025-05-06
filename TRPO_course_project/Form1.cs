@@ -137,7 +137,7 @@ namespace TRPO_course_project
             {
                 Location = new Point(130, 93),
                 Minimum = 100,
-                Maximum = 10000,
+                Maximum = 100000,
                 Increment = 100,
                 Value = tester.MinWritingTime,
                 Width = 80,
@@ -206,7 +206,7 @@ namespace TRPO_course_project
             {
                 Location = new Point(130, 168),
                 Minimum = 100,
-                Maximum = 10000,
+                Maximum = 100000,
                 Increment = 100,
                 Value = tester.MaxReviewingTime,
                 Width = 80,
