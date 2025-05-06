@@ -12,6 +12,12 @@ namespace TRPO_course_project.Models
         public TestProgram CurrentProgram { get; private set; }
         public TestProgram ProgramToReview { get; private set; }
         
+        // Configurable time intervals (in milliseconds)
+        public int MinWritingTime { get; set; } = 1000;
+        public int MaxWritingTime { get; set; } = 3000;
+        public int MinReviewingTime { get; set; } = 1000;
+        public int MaxReviewingTime { get; set; } = 2000;
+        
         private readonly object _stateLock = new object();
         private readonly ManualResetEvent _wakeupEvent = new ManualResetEvent(false);
         private readonly Random _random = new Random();
@@ -35,8 +41,8 @@ namespace TRPO_course_project.Models
                 ChangeState(TesterState.Writing);
             }
             
-            // Simulate writing time
-            Thread.Sleep(_random.Next(1000, 3000));
+            // Simulate writing time using configurable interval
+            Thread.Sleep(_random.Next(MinWritingTime, MaxWritingTime));
             
             lock (_stateLock)
             {
@@ -80,8 +86,8 @@ namespace TRPO_course_project.Models
                 ChangeState(TesterState.Reviewing);
             }
             
-            // Simulate review time
-            Thread.Sleep(_random.Next(1000, 2000));
+            // Simulate review time using configurable interval
+            Thread.Sleep(_random.Next(MinReviewingTime, MaxReviewingTime));
             
             lock (_stateLock)
             {

@@ -76,10 +76,11 @@ namespace TRPO_course_project
             {
                 BorderStyle = BorderStyle.FixedSingle,
                 Width = testerFlowLayoutPanel.Width - 10,
-                Height = 80,
+                Height = 180, // Increased height for time interval controls
                 Margin = new Padding(5)
             };
             
+            // Tester name
             var nameLabel = new Label
             {
                 Text = tester.Name,
@@ -89,6 +90,7 @@ namespace TRPO_course_project
             };
             panel.Controls.Add(nameLabel);
             
+            // State label
             var stateLabel = new Label
             {
                 Text = $"State: {tester.State}",
@@ -97,11 +99,186 @@ namespace TRPO_course_project
             };
             panel.Controls.Add(stateLabel);
             
+            // Time interval configuration
+            var timeLabel = new Label
+            {
+                Text = "Time Intervals (ms):",
+                Location = new Point(10, 70),
+                AutoSize = true,
+                Font = new Font(Font.FontFamily, 9, FontStyle.Bold)
+            };
+            panel.Controls.Add(timeLabel);
+            
+            // Writing time - min
+            var writeMinLabel = new Label
+            {
+                Text = "Min Writing Time:",
+                Location = new Point(10, 95),
+                AutoSize = true,
+                Size = new Size(110, 20)
+            };
+            panel.Controls.Add(writeMinLabel);
+            
+            var writeMinInput = new NumericUpDown
+            {
+                Location = new Point(130, 93),
+                Minimum = 100,
+                Maximum = 10000,
+                Increment = 100,
+                Value = tester.MinWritingTime,
+                Width = 80,
+                Tag = "MinWritingTime"
+            };
+            writeMinInput.ValueChanged += (sender, e) => UpdateTesterTimeInterval(tester.Id, "MinWritingTime", (int)writeMinInput.Value);
+            panel.Controls.Add(writeMinInput);
+            
+            // Writing time - max
+            var writeMaxLabel = new Label
+            {
+                Text = "Max Writing Time:",
+                Location = new Point(10, 120),
+                AutoSize = true,
+                Size = new Size(110, 20)
+            };
+            panel.Controls.Add(writeMaxLabel);
+            
+            var writeMaxInput = new NumericUpDown
+            {
+                Location = new Point(130, 118),
+                Minimum = 100,
+                Maximum = 10000,
+                Increment = 100,
+                Value = tester.MaxWritingTime,
+                Width = 80,
+                Tag = "MaxWritingTime"
+            };
+            writeMaxInput.ValueChanged += (sender, e) => UpdateTesterTimeInterval(tester.Id, "MaxWritingTime", (int)writeMaxInput.Value);
+            panel.Controls.Add(writeMaxInput);
+            
+            // Review time - min
+            var reviewMinLabel = new Label
+            {
+                Text = "Min Review Time:",
+                Location = new Point(10, 145),
+                AutoSize = true,
+                Size = new Size(110, 20)
+            };
+            panel.Controls.Add(reviewMinLabel);
+            
+            var reviewMinInput = new NumericUpDown
+            {
+                Location = new Point(130, 143),
+                Minimum = 100,
+                Maximum = 10000,
+                Increment = 100,
+                Value = tester.MinReviewingTime,
+                Width = 80,
+                Tag = "MinReviewingTime"
+            };
+            reviewMinInput.ValueChanged += (sender, e) => UpdateTesterTimeInterval(tester.Id, "MinReviewingTime", (int)reviewMinInput.Value);
+            panel.Controls.Add(reviewMinInput);
+            
+            // Review time - max
+            var reviewMaxLabel = new Label
+            {
+                Text = "Max Review Time:",
+                Location = new Point(10, 170),
+                AutoSize = true,
+                Size = new Size(110, 20)
+            };
+            panel.Controls.Add(reviewMaxLabel);
+            
+            var reviewMaxInput = new NumericUpDown
+            {
+                Location = new Point(130, 168),
+                Minimum = 100,
+                Maximum = 10000,
+                Increment = 100,
+                Value = tester.MaxReviewingTime,
+                Width = 80,
+                Tag = "MaxReviewingTime"
+            };
+            reviewMaxInput.ValueChanged += (sender, e) => UpdateTesterTimeInterval(tester.Id, "MaxReviewingTime", (int)reviewMaxInput.Value);
+            panel.Controls.Add(reviewMaxInput);
+            
             _testerPanels[tester.Id] = panel;
             _testerStateLabels[tester.Id] = stateLabel;
             
             testerFlowLayoutPanel.Controls.Add(panel);
             
+            // Setup state change handler
+            CreateTesterStateHandler(tester);
+        }
+        
+        private void UpdateTesterTimeInterval(int testerId, string propertyName, int value)
+        {
+            var tester = _testerManager.Testers.FirstOrDefault(t => t.Id == testerId);
+            if (tester == null)
+                return;
+                
+            switch (propertyName)
+            {
+                case "MinWritingTime":
+                    tester.MinWritingTime = value;
+                    // Ensure min is less than max
+                    if (tester.MinWritingTime > tester.MaxWritingTime)
+                        tester.MaxWritingTime = value + 100;
+                    break;
+                    
+                case "MaxWritingTime":
+                    tester.MaxWritingTime = value;
+                    // Ensure max is greater than min
+                    if (tester.MaxWritingTime < tester.MinWritingTime)
+                        tester.MinWritingTime = value - 100;
+                    break;
+                    
+                case "MinReviewingTime":
+                    tester.MinReviewingTime = value;
+                    // Ensure min is less than max
+                    if (tester.MinReviewingTime > tester.MaxReviewingTime)
+                        tester.MaxReviewingTime = value + 100;
+                    break;
+                    
+                case "MaxReviewingTime":
+                    tester.MaxReviewingTime = value;
+                    // Ensure max is greater than min
+                    if (tester.MaxReviewingTime < tester.MinReviewingTime)
+                        tester.MinReviewingTime = value - 100;
+                    break;
+            }
+            
+            // Update UI if needed
+            if (_testerPanels.TryGetValue(testerId, out var panel))
+            {
+                foreach (Control control in panel.Controls)
+                {
+                    if (control is NumericUpDown numInput && numInput.Tag is string tag)
+                    {
+                        switch (tag)
+                        {
+                            case "MinWritingTime":
+                                numInput.Value = tester.MinWritingTime;
+                                break;
+                            case "MaxWritingTime":
+                                numInput.Value = tester.MaxWritingTime;
+                                break;
+                            case "MinReviewingTime":
+                                numInput.Value = tester.MinReviewingTime;
+                                break;
+                            case "MaxReviewingTime":
+                                numInput.Value = tester.MaxReviewingTime;
+                                break;
+                        }
+                    }
+                }
+            }
+            
+            // Log the change
+            AddLogMessage($"Updated {tester.Name}'s {propertyName} to {value}ms", DateTime.Now);
+        }
+        
+        private void CreateTesterStateHandler(Tester tester)
+        {
             tester.StateChanged += (sender, e) => {
                 if (InvokeRequired)
                 {
@@ -363,8 +540,8 @@ namespace TRPO_course_project
             var containerPanel = new Panel
             {
                 BorderStyle = BorderStyle.FixedSingle,
-                Width = testerChartsPanel.Width - 15,
-                Height = 350, // Increased height to accommodate stats panel
+                Width = testerChartsPanel.Width - 25,
+                Height = 250,
                 Margin = new Padding(5),
                 Padding = new Padding(5),
                 Dock = DockStyle.Top
@@ -378,69 +555,8 @@ namespace TRPO_course_project
                 Dock = DockStyle.Top,
                 Height = 30
             };
-            
-            // Create statistics panel
-            var statsPanel = new Panel
-            {
-                Dock = DockStyle.Top,
-                Height = 100,
-                Padding = new Padding(10)
-            };
-            
-            // Add statistics labels
-            var lblProgramsWritten = new Label
-            {
-                AutoSize = true,
-                Font = new Font("Segoe UI", 10),
-                Location = new Point(10, 10),
-                Text = "Programs Written: 0",
-                Tag = "written"
-            };
-            
-            var lblProgramsReviewed = new Label
-            {
-                AutoSize = true,
-                Font = new Font("Segoe UI", 10),
-                Location = new Point(10, 35),
-                Text = "Programs Reviewed: 0",
-                Tag = "reviewed"
-            };
-            
-            var lblCorrectPrograms = new Label
-            {
-                AutoSize = true,
-                Font = new Font("Segoe UI", 10),
-                Location = new Point(10, 60),
-                Text = "Correct Programs: 0",
-                Tag = "correct"
-            };
-            
-            var lblIncorrectPrograms = new Label
-            {
-                AutoSize = true,
-                Font = new Font("Segoe UI", 10),
-                Location = new Point(10, 85),
-                Text = "Incorrect Programs: 0",
-                Tag = "incorrect"
-            };
-            
-            statsPanel.Controls.Add(lblProgramsWritten);
-            statsPanel.Controls.Add(lblProgramsReviewed);
-            statsPanel.Controls.Add(lblCorrectPrograms);
-            statsPanel.Controls.Add(lblIncorrectPrograms);
-            
-            // Store references to labels in the tag of the panel
-            statsPanel.Tag = new Dictionary<string, Label>
-            {
-                { "written", lblProgramsWritten },
-                { "reviewed", lblProgramsReviewed },
-                { "correct", lblCorrectPrograms },
-                { "incorrect", lblIncorrectPrograms }
-            };
-            
-            containerPanel.Controls.Add(statsPanel);
             containerPanel.Controls.Add(titleLabel);
-
+            
             // Create chart
             var chart = new Chart
             {
@@ -551,38 +667,6 @@ namespace TRPO_course_project
                 
                 DateTime now = DateTime.Now;
                 _lastTesterUpdateTimes[stats.TesterId] = now;
-                
-                // Find the container panel that holds the chart
-                Control containerPanel = chart.Parent;
-                if (containerPanel == null)
-                    return;
-                
-                // Find the stats panel (should be the first panel in the container)
-                Panel statsPanel = null;
-                foreach (Control control in containerPanel.Controls)
-                {
-                    if (control is Panel panel && panel.Tag is Dictionary<string, Label>)
-                    {
-                        statsPanel = panel;
-                        break;
-                    }
-                }
-                
-                // Update the stats labels if found
-                if (statsPanel != null && statsPanel.Tag is Dictionary<string, Label> labelsDict)
-                {
-                    if (labelsDict.TryGetValue("written", out var lblWritten))
-                        lblWritten.Text = $"Programs Written: {stats.ProgramsWritten}";
-                        
-                    if (labelsDict.TryGetValue("reviewed", out var lblReviewed))
-                        lblReviewed.Text = $"Programs Reviewed: {stats.ProgramsReviewed}";
-                        
-                    if (labelsDict.TryGetValue("correct", out var lblCorrect))
-                        lblCorrect.Text = $"Correct Programs: {stats.CorrectReviews}";
-                        
-                    if (labelsDict.TryGetValue("incorrect", out var lblIncorrect))
-                        lblIncorrect.Text = $"Incorrect Programs: {stats.IncorrectReviews}";
-                }
                 
                 // Update the chart with new data
                 lock (chart)
