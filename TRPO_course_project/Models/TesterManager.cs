@@ -88,13 +88,12 @@ namespace TRPO_course_project.Models
                             tester.LastReviewerId = result.ReviewerId;
                             if (result.IsCorrect)
                             {
-                                LogMessage($"{tester.Name} отримав підтвердження від {result.ReviewerName}, починає нову програму");
-                                continue; // Переходимо до написання нової програми
+                                LogMessage($"{tester.Name} got confirmation from {result.ReviewerName}, starts a new program");
+                                continue; 
                             }
                             else
                             {
-                                LogMessage($"{tester.Name} отримав відмову від {result.ReviewerName}, виправляє програму");
-                                // Виправляє і знову віддає тому ж тестеру
+                                LogMessage($"{tester.Name} got a rejection from {result.ReviewerName}, corrects the program");
                                 await WriteAndSendProgramAsync(tester, token, result.ReviewerId);
                                 continue;
                             }
@@ -120,7 +119,7 @@ namespace TRPO_course_project.Models
         private async Task WriteAndSendProgramAsync(Tester tester, CancellationToken token, int? reviewerId = null)
         {
             tester.ChangeState(TesterState.Writing);
-            LogMessage($"{tester.Name} почав писати програму");
+            LogMessage($"{tester.Name} started writing a program");
             int writeTime = _random.Next(tester.MinWritingTime, tester.MaxWritingTime);
             await Task.Delay(writeTime, token);
             var program = new TestProgram(tester.Id);
@@ -146,7 +145,7 @@ namespace TRPO_course_project.Models
             }
             var reviewer = _testers[reviewerIndex];
             reviewer.ReviewQueue.Enqueue(program);
-            LogMessage($"{tester.Name} відправив програму на перевірку {reviewer.Name}");
+            LogMessage($"{tester.Name} sent a program to {reviewer.Name} for review");
             // Готуємося чекати результату
             tester.WaitingForResult = new TaskCompletionSource<ReviewResult>();
         }
@@ -154,7 +153,7 @@ namespace TRPO_course_project.Models
         private async Task ReviewProgramAsync(Tester reviewer, TestProgram program, CancellationToken token)
         {
             reviewer.ChangeState(TesterState.Reviewing);
-            LogMessage($"{reviewer.Name} перевіряє програму від Tester {program.AuthorId}");
+            LogMessage($"{reviewer.Name} is reviewing a program from Tester {program.AuthorId}");
             int reviewTime = _random.Next(reviewer.MinReviewingTime, reviewer.MaxReviewingTime);
             await Task.Delay(reviewTime, token);
             bool isCorrect = _random.Next(100) < 70;
@@ -174,8 +173,8 @@ namespace TRPO_course_project.Models
                 UpdateStatistics();
             }
             LogMessage(isCorrect
-                ? $"{reviewer.Name} підтвердив програму Tester {program.AuthorId}"
-                : $"{reviewer.Name} відхилив програму Tester {program.AuthorId}");
+                ? $"{reviewer.Name} confirmed the program from Tester {program.AuthorId}"
+                : $"{reviewer.Name} rejected the program from Tester {program.AuthorId}");
             // Знаходимо автора і повертаємо результат
             var author = _testers.First(t => t.Id == program.AuthorId);
             author.WaitingForResult?.SetResult(new ReviewResult
