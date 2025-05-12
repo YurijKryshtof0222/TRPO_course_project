@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Collections.Concurrent;
+using System.Threading.Tasks;
 
 namespace TRPO_course_project.Models
 {
@@ -9,8 +11,6 @@ namespace TRPO_course_project.Models
         public int Id { get; private set; }
         public string Name { get; private set; }
         public TesterState State { get; private set; }
-        public TestProgram CurrentProgram { get; private set; }
-        public TestProgram ProgramToReview { get; private set; }
         
         // Configurable time intervals (in milliseconds)
         public int MinWritingTime { get; set; } = 1000;
@@ -19,13 +19,16 @@ namespace TRPO_course_project.Models
         public int MaxReviewingTime { get; set; } = 2000;
         
         private readonly object _stateLock = new object();
-        private readonly ManualResetEvent _wakeupEvent = new ManualResetEvent(false);
-        private readonly Random _random = new Random();
         
         public event EventHandler<TesterEventArgs> StateChanged;
-        public event EventHandler<TestProgramEventArgs> ProgramCompleted;
-        public event EventHandler<TestProgramEventArgs> ReviewCompleted;
         
+        // Черга програм, які треба перевірити цим тестером
+        public ConcurrentQueue<TestProgram> ReviewQueue { get; } = new ConcurrentQueue<TestProgram>();
+        
+        // TaskCompletionSource для очікування результату перевірки власної програми
+        public TaskCompletionSource<ReviewResult> WaitingForResult { get; set; }
+        public int? LastReviewerId { get; set; } // Для повторної перевірки
+
         public Tester(int id, string name)
         {
             Id = id;
@@ -33,89 +36,17 @@ namespace TRPO_course_project.Models
             State = TesterState.Sleeping;
         }
         
-        public void StartWritingProgram()
+        // Публічний метод для зміни стану тестера
+        public void ChangeState(TesterState newState)
         {
             lock (_stateLock)
             {
-                CurrentProgram = new TestProgram(Id);
-                ChangeState(TesterState.Writing);
-            }
-            
-            // Simulate writing time using configurable interval
-            Thread.Sleep(_random.Next(MinWritingTime, MaxWritingTime));
-            
-            lock (_stateLock)
-            {
-                var program = CurrentProgram;
-                CurrentProgram = null;
-                ProgramCompleted?.Invoke(this, new TestProgramEventArgs(program));
-                
-                if (ProgramToReview == null)
+                if (State != newState)
                 {
-                    ChangeState(TesterState.Sleeping);
-                    _wakeupEvent.Reset();
-                }
-                else
-                {
-                    StartReviewingProgram();
+                    State = newState;
+                    StateChanged?.Invoke(this, new TesterEventArgs(this, newState));
                 }
             }
-        }
-        
-        public void AssignProgramToReview(TestProgram program)
-        {
-            lock (_stateLock)
-            {
-                ProgramToReview = program;
-                
-                if (State == TesterState.Sleeping)
-                {
-                    _wakeupEvent.Set();
-                    StartReviewingProgram();
-                }
-            }
-        }
-        
-        private void StartReviewingProgram()
-        {
-            lock (_stateLock)
-            {
-                if (ProgramToReview == null)
-                    return;
-                    
-                ChangeState(TesterState.Reviewing);
-            }
-            
-            // Simulate review time using configurable interval
-            Thread.Sleep(_random.Next(MinReviewingTime, MaxReviewingTime));
-            
-            lock (_stateLock)
-            {
-                // Decide if program is correct (70% chance)
-                bool isCorrect = _random.Next(100) < 70;
-                ProgramToReview.SetReviewResult(isCorrect, this);
-                
-                var program = ProgramToReview;
-                ProgramToReview = null;
-                ReviewCompleted?.Invoke(this, new TestProgramEventArgs(program));
-                
-                if (CurrentProgram == null)
-                {
-                    ChangeState(TesterState.Sleeping);
-                    _wakeupEvent.Reset();
-                }
-            }
-        }
-        
-        public void WaitForWork()
-        {
-            _wakeupEvent.WaitOne();
-        }
-        
-        private void ChangeState(TesterState newState)
-        {
-            State = newState;
-            StateChanged?.Invoke(this, new TesterEventArgs(this, newState));
         }
     }
     

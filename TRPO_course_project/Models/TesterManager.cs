@@ -2,16 +2,20 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Concurrent;
+using System.Linq;
 
 namespace TRPO_course_project.Models
 {
     public class TesterManager
     {
+        private readonly object _lockObject = new object();
         private readonly List<Tester> _testers = new List<Tester>();
         private readonly Dictionary<int, Task> _testerTasks = new Dictionary<int, Task>();
         private readonly Dictionary<int, TesterStatistics> _testerStatistics = new Dictionary<int, TesterStatistics>();
-        private readonly object _lockObject = new object();
+        
         private CancellationTokenSource _cancellationTokenSource;
+        private readonly Random _random = new Random();
         
         public event EventHandler<LogEventArgs> LogEvent;
         public event EventHandler<StatisticsEventArgs> StatisticsUpdated;
@@ -37,13 +41,8 @@ namespace TRPO_course_project.Models
             
             foreach (var tester in _testers)
             {
-                // Create statistics tracking for each tester
                 _testerStatistics[tester.Id] = new TesterStatistics(tester.Id, tester.Name);
-                
-                // Subscribe to tester events
                 tester.StateChanged += Tester_StateChanged;
-                tester.ProgramCompleted += Tester_ProgramCompleted;
-                tester.ReviewCompleted += Tester_ReviewCompleted;
             }
         }
         
@@ -55,64 +54,62 @@ namespace TRPO_course_project.Models
             foreach (var tester in _testers)
             {
                 var testerId = tester.Id;
-                _testerTasks[testerId] = Task.Run(() => RunTesterWorkflow(tester, token), token);
+                _testerTasks[testerId] = Task.Run(() => TesterWorkflow(tester, token), token);
             }
             
             LogMessage("Tester simulation started");
         }
         
-        public void Stop()
-        {
-            if (_cancellationTokenSource != null)
-            {
-                try
-                {
-                    // Signal cancellation
-                    _cancellationTokenSource.Cancel();
-                    
-                    // Wait for tasks to complete but with a timeout to prevent deadlocks
-                    bool allTasksCompleted = Task.WaitAll(_testerTasks.Values.ToArray(), 3000);
-                    
-                    if (!allTasksCompleted)
-                    {
-                        LogMessage("Some tester tasks are taking longer to stop. Continuing shutdown.");
-                    }
-                    
-                    _cancellationTokenSource.Dispose();
-                    _cancellationTokenSource = null;
-                    
-                    LogMessage("Tester simulation stopped");
-                }
-                catch (Exception ex)
-                {
-                    LogMessage($"Error stopping simulation: {ex.Message}");
-                }
-            }
-        }
-        
-        private void RunTesterWorkflow(Tester tester, CancellationToken token)
+        private async Task TesterWorkflow(Tester tester, CancellationToken token)
         {
             try
             {
-                // Start by writing a program
-                tester.StartWritingProgram();
-                
                 while (!token.IsCancellationRequested)
                 {
-                    tester.WaitForWork();
-                    
-                    if (token.IsCancellationRequested)
-                        break;
-                        
-                    if (tester.State == TesterState.Sleeping && tester.ProgramToReview == null)
+                    // Якщо є програма на перевірку — перевіряємо її
+                    if (tester.ReviewQueue.TryDequeue(out var programToReview))
                     {
-                        tester.StartWritingProgram();
+                        await ReviewProgramAsync(tester, programToReview, token);
+                        continue;
                     }
+
+                    // Якщо чекає на результат — чекаємо, але не блокуємо цикл повністю
+                    if (tester.WaitingForResult != null)
+                    {
+                        // Task.WhenAny: або результат, або знову перевіряємо чергу через короткий час
+                        var completed = await Task.WhenAny(
+                            tester.WaitingForResult.Task,
+                            Task.Delay(100, token)
+                        );
+                        if (completed == tester.WaitingForResult.Task)
+                        {
+                            var result = tester.WaitingForResult.Task.Result;
+                            tester.WaitingForResult = null;
+                            tester.LastReviewerId = result.ReviewerId;
+                            if (result.IsCorrect)
+                            {
+                                LogMessage($"{tester.Name} отримав підтвердження від {result.ReviewerName}, починає нову програму");
+                                continue; // Переходимо до написання нової програми
+                            }
+                            else
+                            {
+                                LogMessage($"{tester.Name} отримав відмову від {result.ReviewerName}, виправляє програму");
+                                // Виправляє і знову віддає тому ж тестеру
+                                await WriteAndSendProgramAsync(tester, token, result.ReviewerId);
+                                continue;
+                            }
+                        }
+                        // Якщо не завершено — цикл повториться і перевірить чергу ще раз
+                        continue;
+                    }
+
+                    // Якщо нічого не треба перевіряти і не чекає — пише нову програму
+                    await WriteAndSendProgramAsync(tester, token);
                 }
             }
             catch (OperationCanceledException)
             {
-                // Normal cancellation
+                // Нормальне завершення
             }
             catch (Exception ex)
             {
@@ -120,106 +117,96 @@ namespace TRPO_course_project.Models
             }
         }
         
-        private void Tester_StateChanged(object sender, TesterEventArgs e)
+        private async Task WriteAndSendProgramAsync(Tester tester, CancellationToken token, int? reviewerId = null)
         {
-            var tester = e.Tester;
-            LogMessage($"{tester.Name} is now {e.State}");
-        }
-        
-        private void Tester_ProgramCompleted(object sender, TestProgramEventArgs e)
-        {
-            var tester = (Tester)sender;
-            var program = e.Program;
-            
+            tester.ChangeState(TesterState.Writing);
+            LogMessage($"{tester.Name} почав писати програму");
+            int writeTime = _random.Next(tester.MinWritingTime, tester.MaxWritingTime);
+            await Task.Delay(writeTime, token);
+            var program = new TestProgram(tester.Id);
             lock (_lockObject)
             {
                 _totalProgramsWritten++;
-                
-                // Update individual tester statistics
                 if (_testerStatistics.TryGetValue(tester.Id, out var stats))
                 {
                     stats.IncrementProgramsWritten();
-                    // Notify listeners about the updated statistics
                     TesterStatisticsUpdated?.Invoke(this, new TesterStatisticsEventArgs(stats));
                 }
-                
-                // Assign the program to another tester for review
-                var reviewer = GetAvailableReviewer(tester.Id);
-                if (reviewer != null)
-                {
-                    LogMessage($"{tester.Name} completed a program and sent it to {reviewer.Name} for review");
-                    reviewer.AssignProgramToReview(program);
-                }
-                else
-                {
-                    LogMessage($"{tester.Name} completed a program but no reviewers are available");
-                    // Queue the program for later review
-                    // In a real implementation, we would have a queue here
-                }
-                
                 UpdateStatistics();
             }
+            // Визначаємо, кому віддати на перевірку
+            int reviewerIndex;
+            if (reviewerId.HasValue)
+            {
+                reviewerIndex = _testers.FindIndex(t => t.Id == reviewerId.Value);
+            }
+            else
+            {
+                reviewerIndex = (_testers.IndexOf(tester) + 1) % _testers.Count;
+            }
+            var reviewer = _testers[reviewerIndex];
+            reviewer.ReviewQueue.Enqueue(program);
+            LogMessage($"{tester.Name} відправив програму на перевірку {reviewer.Name}");
+            // Готуємося чекати результату
+            tester.WaitingForResult = new TaskCompletionSource<ReviewResult>();
         }
         
-        private void Tester_ReviewCompleted(object sender, TestProgramEventArgs e)
+        private async Task ReviewProgramAsync(Tester reviewer, TestProgram program, CancellationToken token)
         {
-            var reviewer = (Tester)sender;
-            var program = e.Program;
-            
+            reviewer.ChangeState(TesterState.Reviewing);
+            LogMessage($"{reviewer.Name} перевіряє програму від Tester {program.AuthorId}");
+            int reviewTime = _random.Next(reviewer.MinReviewingTime, reviewer.MaxReviewingTime);
+            await Task.Delay(reviewTime, token);
+            bool isCorrect = _random.Next(100) < 70;
+            program.SetReviewResult(isCorrect, reviewer);
             lock (_lockObject)
             {
                 _totalProgramsReviewed++;
-                bool isCorrect = program.IsCorrect == true;
-                
-                // Update reviewer statistics
-                if (_testerStatistics.TryGetValue(reviewer.Id, out var reviewerStats))
-                {
-                    reviewerStats.IncrementProgramsReviewed(isCorrect);
-                    // Notify listeners about the updated statistics
-                    TesterStatisticsUpdated?.Invoke(this, new TesterStatisticsEventArgs(reviewerStats));
-                }
-                
                 if (isCorrect)
-                {
                     _totalCorrectPrograms++;
-                    LogMessage($"{reviewer.Name} approved the program from Tester {program.AuthorId}");
-                    
-                    // The author can now write a new program
-                    var author = _testers.Find(t => t.Id == program.AuthorId);
-                    if (author.State == TesterState.Sleeping)
-                    {
-                        Task.Run(() => author.StartWritingProgram());
-                    }
-                }
                 else
-                {
                     _totalIncorrectPrograms++;
-                    LogMessage($"{reviewer.Name} rejected the program from Tester {program.AuthorId}");
-                    
-                    // The author needs to fix and resubmit
-                    var author = _testers.Find(t => t.Id == program.AuthorId);
-                    var revisedProgram = program.CreateRevision();
-                    
-                    if (author.State == TesterState.Sleeping)
-                    {
-                        Task.Run(() => {
-                            author.StartWritingProgram();
-                            // After writing, resubmit to the same reviewer
-                            reviewer.AssignProgramToReview(revisedProgram);
-                        });
-                    }
+                if (_testerStatistics.TryGetValue(reviewer.Id, out var stats))
+                {
+                    stats.IncrementProgramsReviewed(isCorrect);
+                    TesterStatisticsUpdated?.Invoke(this, new TesterStatisticsEventArgs(stats));
                 }
-                
                 UpdateStatistics();
+            }
+            LogMessage(isCorrect
+                ? $"{reviewer.Name} підтвердив програму Tester {program.AuthorId}"
+                : $"{reviewer.Name} відхилив програму Tester {program.AuthorId}");
+            // Знаходимо автора і повертаємо результат
+            var author = _testers.First(t => t.Id == program.AuthorId);
+            author.WaitingForResult?.SetResult(new ReviewResult
+            {
+                ProgramId = program.Id,
+                IsCorrect = isCorrect,
+                ReviewerId = reviewer.Id,
+                ReviewerName = reviewer.Name
+            });
+            reviewer.ChangeState(TesterState.Sleeping);
+        }
+        
+        public void Stop()
+        {
+            if (_cancellationTokenSource != null)
+            {
+                _cancellationTokenSource.Cancel();
+                try
+                {
+                    Task.WaitAll(_testerTasks.Values.ToArray(), 3000);
+                }
+                catch (AggregateException) { }
+                _cancellationTokenSource.Dispose();
+                _cancellationTokenSource = null;
+                LogMessage("Tester simulation stopped");
             }
         }
         
-        private Tester GetAvailableReviewer(int authorId)
+        private void Tester_StateChanged(object sender, TesterEventArgs e)
         {
-            // Find a tester who is not the author and is either sleeping or will be done soon
-            return _testers.Find(t => t.Id != authorId && 
-                                    (t.State == TesterState.Sleeping || 
-                                     (t.State == TesterState.Reviewing && t.ProgramToReview == null)));
+            LogMessage($"{e.Tester.Name} is now {e.State}");
         }
         
         private void LogMessage(string message)
@@ -236,5 +223,14 @@ namespace TRPO_course_project.Models
                 _totalIncorrectPrograms
             ));
         }
+    }
+    
+    // Клас для зберігання результату перевірки
+    public class ReviewResult
+    {
+        public int ProgramId { get; set; }
+        public bool IsCorrect { get; set; }
+        public int ReviewerId { get; set; }
+        public string ReviewerName { get; set; }
     }
 }

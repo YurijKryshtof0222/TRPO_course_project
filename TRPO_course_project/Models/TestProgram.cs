@@ -11,12 +11,21 @@ namespace TRPO_course_project.Models
         public DateTime CreationTime { get; private set; }
         public DateTime? ReviewTime { get; private set; }
         public int RevisionCount { get; private set; }
-        
+
+
         public TestProgram(int authorId)
         {
             Id = Guid.NewGuid().GetHashCode();
             AuthorId = authorId;
             CreationTime = DateTime.Now;
+            RevisionCount = 0;
+        }
+
+        public TestProgram(int authorId, DateTime creationTime)
+        {
+            Id = Guid.NewGuid().GetHashCode();
+            AuthorId = authorId;
+            CreationTime = creationTime;
             RevisionCount = 0;
         }
         
