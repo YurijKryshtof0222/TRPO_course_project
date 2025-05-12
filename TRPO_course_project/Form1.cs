@@ -30,6 +30,11 @@ namespace TRPO_course_project
         private List<StatisticsDataPoint> _historicalData = new List<StatisticsDataPoint>();
         private int _chartTimeWindowSeconds = 60; // Default 60 second window
         
+        // Add new dictionaries for labels
+        private Dictionary<int, Label> _testerQueueLengthLabels = new Dictionary<int, Label>();
+        private Dictionary<int, Label> _testerAvgWaitingTimeLabels = new Dictionary<int, Label>();
+        private Dictionary<int, Label> _testerAvgServiceTimeLabels = new Dictionary<int, Label>();
+        
         public MainForm()
         {
             InitializeComponent();
@@ -90,7 +95,7 @@ namespace TRPO_course_project
             {
                 BorderStyle = BorderStyle.FixedSingle,
                 Width = testerFlowLayoutPanel.Width - 10,
-                Height = 200, // Increased height for time interval controls
+                Height = 300, // Increased height for new controls
                 Margin = new Padding(5)
             };
             
@@ -113,11 +118,20 @@ namespace TRPO_course_project
             };
             panel.Controls.Add(stateLabel);
             
+            // Queue length label
+            var queueLengthLabel = new Label
+            {
+                Text = $"Queue Length: {tester.ReviewQueue.Count}",
+                Location = new Point(10, 70),
+                AutoSize = true
+            };
+            panel.Controls.Add(queueLengthLabel);
+            
             // Time interval configuration
             var timeLabel = new Label
             {
                 Text = "Time Intervals (ms):",
-                Location = new Point(10, 70),
+                Location = new Point(10, 100),
                 AutoSize = true,
                 Font = new Font(Font.FontFamily, 9, FontStyle.Bold)
             };
@@ -127,7 +141,7 @@ namespace TRPO_course_project
             var writeMinLabel = new Label
             {
                 Text = "Min Writing Time:",
-                Location = new Point(10, 95),
+                Location = new Point(10, 125),
                 AutoSize = true,
                 Size = new Size(110, 20)
             };
@@ -135,7 +149,7 @@ namespace TRPO_course_project
             
             var writeMinInput = new NumericUpDown
             {
-                Location = new Point(130, 93),
+                Location = new Point(130, 123),
                 Minimum = 100,
                 Maximum = 100000,
                 Increment = 100,
@@ -150,7 +164,7 @@ namespace TRPO_course_project
             var writeMaxLabel = new Label
             {
                 Text = "Max Writing Time:",
-                Location = new Point(10, 120),
+                Location = new Point(10, 150),
                 AutoSize = true,
                 Size = new Size(110, 20)
             };
@@ -158,7 +172,7 @@ namespace TRPO_course_project
             
             var writeMaxInput = new NumericUpDown
             {
-                Location = new Point(130, 118),
+                Location = new Point(130, 148),
                 Minimum = 100,
                 Maximum = 100000,
                 Increment = 100,
@@ -173,7 +187,7 @@ namespace TRPO_course_project
             var reviewMinLabel = new Label
             {
                 Text = "Min Review Time:",
-                Location = new Point(10, 145),
+                Location = new Point(10, 175),
                 AutoSize = true,
                 Size = new Size(110, 20)
             };
@@ -181,7 +195,7 @@ namespace TRPO_course_project
             
             var reviewMinInput = new NumericUpDown
             {
-                Location = new Point(130, 143),
+                Location = new Point(130, 173),
                 Minimum = 100,
                 Maximum = 100000,
                 Increment = 100,
@@ -196,7 +210,7 @@ namespace TRPO_course_project
             var reviewMaxLabel = new Label
             {
                 Text = "Max Review Time:",
-                Location = new Point(10, 170),
+                Location = new Point(10, 200),
                 AutoSize = true,
                 Size = new Size(110, 20)
             };
@@ -204,7 +218,7 @@ namespace TRPO_course_project
             
             var reviewMaxInput = new NumericUpDown
             {
-                Location = new Point(130, 168),
+                Location = new Point(130, 198),
                 Minimum = 100,
                 Maximum = 100000,
                 Increment = 100,
@@ -215,8 +229,39 @@ namespace TRPO_course_project
             reviewMaxInput.ValueChanged += (sender, e) => UpdateTesterTimeInterval(tester.Id, "MaxReviewingTime", (int)reviewMaxInput.Value);
             panel.Controls.Add(reviewMaxInput);
             
+            // Add statistics labels
+            var statsLabel = new Label
+            {
+                Text = "Statistics:",
+                Location = new Point(10, 220),
+                AutoSize = true,
+                Font = new Font(Font.FontFamily, 9, FontStyle.Bold)
+            };
+            panel.Controls.Add(statsLabel);
+            
+            var avgWaitingTimeLabel = new Label
+            {
+                Text = "Avg Waiting Time: 0ms",
+                Location = new Point(10, 240),
+                AutoSize = true
+            };
+            panel.Controls.Add(avgWaitingTimeLabel);
+            
+            var avgServiceTimeLabel = new Label
+            {
+                Text = "Avg Service Time: 0ms",
+                Location = new Point(10, 260),
+                AutoSize = true
+            };
+            panel.Controls.Add(avgServiceTimeLabel);
+            
             _testerPanels[tester.Id] = panel;
             _testerStateLabels[tester.Id] = stateLabel;
+            
+            // Store references to new labels
+            _testerQueueLengthLabels[tester.Id] = queueLengthLabel;
+            _testerAvgWaitingTimeLabels[tester.Id] = avgWaitingTimeLabel;
+            _testerAvgServiceTimeLabels[tester.Id] = avgServiceTimeLabel;
             
             testerFlowLayoutPanel.Controls.Add(panel);
             
@@ -617,7 +662,27 @@ namespace TRPO_course_project
         
         private void UiUpdateTimer_Tick(object sender, EventArgs e)
         {
-            // Update any UI elements that need frequent updates
+            foreach (var tester in _testerManager.Testers)
+            {
+                if (_testerQueueLengthLabels.TryGetValue(tester.Id, out var queueLabel))
+                {
+                    queueLabel.Text = $"Queue Length: {tester.ReviewQueue.Count}";
+                }
+                
+                // Update average times if available in tester statistics
+                if (_testerManager.GetTesterStatistics(tester.Id) is TesterStatistics stats)
+                {
+                    if (_testerAvgWaitingTimeLabels.TryGetValue(tester.Id, out var waitingLabel))
+                    {
+                        waitingLabel.Text = $"Avg Waiting Time: {stats.AverageWaitingTime.TotalMilliseconds:F0}ms";
+                    }
+                    
+                    if (_testerAvgServiceTimeLabels.TryGetValue(tester.Id, out var serviceLabel))
+                    {
+                        serviceLabel.Text = $"Avg Service Time: {stats.AverageServiceTime.TotalMilliseconds:F0}ms";
+                    }
+                }
+            }
         }
         
         private void startButton_Click(object sender, EventArgs e)

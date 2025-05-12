@@ -4,14 +4,18 @@ namespace TRPO_course_project.Models
 {
     public class TestProgram
     {
-        public int Id { get; private set; }
-        public int AuthorId { get; private set; }
+        public int Id { get; }
+        public int AuthorId { get; }
         public int? ReviewerId { get; private set; }
         public bool? IsCorrect { get; private set; }
         public DateTime CreationTime { get; private set; }
         public DateTime? ReviewTime { get; private set; }
         public int RevisionCount { get; private set; }
-
+        public DateTime EnqueueTime { get; set; }
+        public DateTime DequeueTime { get; set; }
+        public DateTime ReviewEndTime { get; set; }
+        public TimeSpan WaitingTime => DequeueTime - EnqueueTime;
+        public TimeSpan ServiceTime => ReviewEndTime - DequeueTime;
 
         public TestProgram(int authorId)
         {
@@ -19,6 +23,7 @@ namespace TRPO_course_project.Models
             AuthorId = authorId;
             CreationTime = DateTime.Now;
             RevisionCount = 0;
+            EnqueueTime = DateTime.Now;
         }
 
         public TestProgram(int authorId, DateTime creationTime)
@@ -27,6 +32,7 @@ namespace TRPO_course_project.Models
             AuthorId = authorId;
             CreationTime = creationTime;
             RevisionCount = 0;
+            EnqueueTime = DateTime.Now;
         }
         
         public void SetReviewResult(bool isCorrect, Tester reviewer)
@@ -34,6 +40,7 @@ namespace TRPO_course_project.Models
             IsCorrect = isCorrect;
             ReviewerId = reviewer.Id;
             ReviewTime = DateTime.Now;
+            ReviewEndTime = DateTime.Now;
         }
         
         public TestProgram CreateRevision()

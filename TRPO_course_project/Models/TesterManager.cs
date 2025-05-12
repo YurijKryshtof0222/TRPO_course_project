@@ -13,7 +13,7 @@ namespace TRPO_course_project.Models
         private readonly List<Tester> _testers = new List<Tester>();
         private readonly Dictionary<int, Task> _testerTasks = new Dictionary<int, Task>();
         private readonly Dictionary<int, TesterStatistics> _testerStatistics = new Dictionary<int, TesterStatistics>();
-        
+
         private CancellationTokenSource _cancellationTokenSource;
         private readonly Random _random = new Random();
         
@@ -32,7 +32,12 @@ namespace TRPO_course_project.Models
         {
             InitializeTesters();
         }
-        
+
+        public TesterStatistics GetTesterStatistics(int id)
+        {
+            return _testerStatistics[id];
+        }
+
         private void InitializeTesters()
         {
             _testers.Add(new Tester(1, "Tester 1"));
@@ -154,10 +159,19 @@ namespace TRPO_course_project.Models
         {
             reviewer.ChangeState(TesterState.Reviewing);
             LogMessage($"{reviewer.Name} is reviewing a program from Tester {program.AuthorId}");
+            
+            // Record dequeue time
+            program.DequeueTime = DateTime.Now;
+            
             int reviewTime = _random.Next(reviewer.MinReviewingTime, reviewer.MaxReviewingTime);
             await Task.Delay(reviewTime, token);
+            
+            // Record review end time
+            program.ReviewEndTime = DateTime.Now;
+            
             bool isCorrect = _random.Next(100) < 70;
             program.SetReviewResult(isCorrect, reviewer);
+            
             lock (_lockObject)
             {
                 _totalProgramsReviewed++;
@@ -165,17 +179,22 @@ namespace TRPO_course_project.Models
                     _totalCorrectPrograms++;
                 else
                     _totalIncorrectPrograms++;
+                    
                 if (_testerStatistics.TryGetValue(reviewer.Id, out var stats))
                 {
                     stats.IncrementProgramsReviewed(isCorrect);
+                    stats.AddWaitingTime(program.WaitingTime);
+                    stats.AddServiceTime(program.ServiceTime);
                     TesterStatisticsUpdated?.Invoke(this, new TesterStatisticsEventArgs(stats));
                 }
                 UpdateStatistics();
             }
+            
             LogMessage(isCorrect
                 ? $"{reviewer.Name} confirmed the program from Tester {program.AuthorId}"
                 : $"{reviewer.Name} rejected the program from Tester {program.AuthorId}");
-            // Знаходимо автора і повертаємо результат
+            
+            // Find author and return result
             var author = _testers.First(t => t.Id == program.AuthorId);
             author.WaitingForResult?.SetResult(new ReviewResult
             {
@@ -184,6 +203,7 @@ namespace TRPO_course_project.Models
                 ReviewerId = reviewer.Id,
                 ReviewerName = reviewer.Name
             });
+            
             reviewer.ChangeState(TesterState.Sleeping);
         }
         
