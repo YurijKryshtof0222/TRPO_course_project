@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 
 namespace TRPO_course_project.Models
 {
@@ -16,6 +17,9 @@ namespace TRPO_course_project.Models
         public DateTime ReviewEndTime { get; set; }
         public TimeSpan WaitingTime => DequeueTime - EnqueueTime;
         public TimeSpan ServiceTime => ReviewEndTime - DequeueTime;
+
+        public Stopwatch WaitingStopwatch { get; } = new Stopwatch();
+        public Stopwatch ServiceStopwatch { get; } = new Stopwatch();
 
         public TestProgram(int authorId)
         {
@@ -50,6 +54,26 @@ namespace TRPO_course_project.Models
                 RevisionCount = this.RevisionCount + 1
             };
             return revision;
+        }
+
+        public void StartWaiting()
+        {
+            WaitingStopwatch.Start();
+        }
+
+        public void StopWaiting()
+        {
+            WaitingStopwatch.Stop();
+        }
+
+        public void StartService()
+        {
+            ServiceStopwatch.Start();
+        }
+
+        public void StopService()
+        {
+            ServiceStopwatch.Stop();
         }
     }
 }
