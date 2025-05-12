@@ -35,6 +35,12 @@ namespace TRPO_course_project
         private Dictionary<int, Label> _testerAvgWaitingTimeLabels = new Dictionary<int, Label>();
         private Dictionary<int, Label> _testerAvgServiceTimeLabels = new Dictionary<int, Label>();
         
+        // Add new dictionaries for analytics controls
+        private Dictionary<int, Label> _testerMaxWaitingTimeLabels = new Dictionary<int, Label>();
+        private Dictionary<int, Label> _testerMaxServiceTimeLabels = new Dictionary<int, Label>();
+        private Dictionary<int, Label> _testerEfficiencyLabels = new Dictionary<int, Label>();
+        private Dictionary<int, TextBox> _testerRecommendationsTexts = new Dictionary<int, TextBox>();
+        
         public MainForm()
         {
             InitializeComponent();
@@ -95,7 +101,7 @@ namespace TRPO_course_project
             {
                 BorderStyle = BorderStyle.FixedSingle,
                 Width = testerFlowLayoutPanel.Width - 10,
-                Height = 300, // Increased height for new controls
+                Height = 450, // Increased height for analytics
                 Margin = new Padding(5)
             };
             
@@ -255,6 +261,59 @@ namespace TRPO_course_project
             };
             panel.Controls.Add(avgServiceTimeLabel);
             
+            // Add analytics section
+            var analyticsLabel = new Label
+            {
+                Text = "Analytics:",
+                Location = new Point(10, 280),
+                AutoSize = true,
+                Font = new Font(Font.FontFamily, 9, FontStyle.Bold)
+            };
+            panel.Controls.Add(analyticsLabel);
+            
+            var maxWaitingTimeLabel = new Label
+            {
+                Text = "Max Waiting Time: 0ms",
+                Location = new Point(10, 300),
+                AutoSize = true
+            };
+            panel.Controls.Add(maxWaitingTimeLabel);
+            
+            var maxServiceTimeLabel = new Label
+            {
+                Text = "Max Service Time: 0ms",
+                Location = new Point(10, 320),
+                AutoSize = true
+            };
+            panel.Controls.Add(maxServiceTimeLabel);
+            
+            var efficiencyLabel = new Label
+            {
+                Text = "Efficiency Score: 0",
+                Location = new Point(10, 340),
+                AutoSize = true
+            };
+            panel.Controls.Add(efficiencyLabel);
+            
+            var recommendationsLabel = new Label
+            {
+                Text = "Recommendations:",
+                Location = new Point(10, 360),
+                AutoSize = true,
+                Font = new Font(Font.FontFamily, 9, FontStyle.Bold)
+            };
+            panel.Controls.Add(recommendationsLabel);
+            
+            var recommendationsText = new TextBox
+            {
+                Location = new Point(10, 380),
+                Size = new Size(panel.Width - 20, 60),
+                Multiline = true,
+                ReadOnly = true,
+                ScrollBars = ScrollBars.Vertical
+            };
+            panel.Controls.Add(recommendationsText);
+            
             _testerPanels[tester.Id] = panel;
             _testerStateLabels[tester.Id] = stateLabel;
             
@@ -262,6 +321,12 @@ namespace TRPO_course_project
             _testerQueueLengthLabels[tester.Id] = queueLengthLabel;
             _testerAvgWaitingTimeLabels[tester.Id] = avgWaitingTimeLabel;
             _testerAvgServiceTimeLabels[tester.Id] = avgServiceTimeLabel;
+            
+            // Store references to new controls
+            _testerMaxWaitingTimeLabels[tester.Id] = maxWaitingTimeLabel;
+            _testerMaxServiceTimeLabels[tester.Id] = maxServiceTimeLabel;
+            _testerEfficiencyLabels[tester.Id] = efficiencyLabel;
+            _testerRecommendationsTexts[tester.Id] = recommendationsText;
             
             testerFlowLayoutPanel.Controls.Add(panel);
             
@@ -664,14 +729,15 @@ namespace TRPO_course_project
         {
             foreach (var tester in _testerManager.Testers)
             {
-                if (_testerQueueLengthLabels.TryGetValue(tester.Id, out var queueLabel))
-                {
-                    queueLabel.Text = $"Queue Length: {tester.ReviewQueue.Count}";
-                }
-                
-                // Update average times if available in tester statistics
                 if (_testerManager.GetTesterStatistics(tester.Id) is TesterStatistics stats)
                 {
+                    // Update queue length
+                    if (_testerQueueLengthLabels.TryGetValue(tester.Id, out var queueLabel))
+                    {
+                        queueLabel.Text = $"Queue Length: {tester.ReviewQueue.Count}";
+                    }
+                    
+                    // Update average times
                     if (_testerAvgWaitingTimeLabels.TryGetValue(tester.Id, out var waitingLabel))
                     {
                         waitingLabel.Text = $"Avg Waiting Time: {stats.AverageWaitingTime.TotalMilliseconds:F0}ms";
@@ -680,6 +746,29 @@ namespace TRPO_course_project
                     if (_testerAvgServiceTimeLabels.TryGetValue(tester.Id, out var serviceLabel))
                     {
                         serviceLabel.Text = $"Avg Service Time: {stats.AverageServiceTime.TotalMilliseconds:F0}ms";
+                    }
+                    
+                    // Update max times
+                    if (_testerMaxWaitingTimeLabels.TryGetValue(tester.Id, out var maxWaitingLabel))
+                    {
+                        maxWaitingLabel.Text = $"Max Waiting Time: {stats.MaxWaitingTime.TotalMilliseconds:F0}ms";
+                    }
+                    
+                    if (_testerMaxServiceTimeLabels.TryGetValue(tester.Id, out var maxServiceLabel))
+                    {
+                        maxServiceLabel.Text = $"Max Service Time: {stats.MaxServiceTime.TotalMilliseconds:F0}ms";
+                    }
+                    
+                    // Update efficiency score
+                    if (_testerEfficiencyLabels.TryGetValue(tester.Id, out var efficiencyLabel))
+                    {
+                        efficiencyLabel.Text = $"Efficiency Score: {stats.EfficiencyScore:F2}";
+                    }
+                    
+                    // Update recommendations
+                    if (_testerRecommendationsTexts.TryGetValue(tester.Id, out var recommendationsText))
+                    {
+                        recommendationsText.Text = stats.PerformanceRecommendations;
                     }
                 }
             }
